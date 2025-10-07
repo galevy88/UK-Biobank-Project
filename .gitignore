@@ -1,3 +1,10 @@
 .venv/
 .qodo/
 .idea/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.swp
+*.swo
+.DS_Store
