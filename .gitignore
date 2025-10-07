@@ -1,3 +1,5 @@
 .venv/
 .qodo/
 .idea/
+__pycache__/
+*.pyc
