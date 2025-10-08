@@ -3,12 +3,6 @@ import dxpy.exceptions
 
 
 def count_all_files(project_id):
-    """
-    Counts the total number of files in a DNAnexus project.
-
-    Args:
-        project_id (str): DNAnexus project ID (e.g., 'project-XXXX').
-    """
     try:
         # Check security context
         if not dxpy.SECURITY_CONTEXT:
