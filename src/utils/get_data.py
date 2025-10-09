@@ -16,7 +16,7 @@ def download_files_from_config(config: dict) -> str:
     file_list = config['files']
 
     download_dir = os.path.join('../data', directory)
-    os.makedirs(download_dir, exist_ok=True)  # Create the directory
+    os.makedirs(download_dir, exist_ok=True)
 
     for file_info in file_list:
         dxid = file_info['id']
