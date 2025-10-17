@@ -1,9 +1,0 @@
-project: project-J3V3Gk8J2Vk49P5kqqVbb2Gx
-directory: sanity_check
-files:
-  - id: file-1234567890abcdef12345678
-    local_name: monocyte_count.csv
-  - id: file-abcdef1234567890abcdef12
-    local_name: total_cholesterol.csv
-  - id: file-xyz7890123456789abcdef01
-    local_name: body_mass_index.csv
