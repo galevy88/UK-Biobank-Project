@@ -2,111 +2,117 @@ import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
 from tqdm import tqdm
+import os                     # <-- NEW
 
-# Read the disease connection matrix
+# === CONFIGURATION ===
+CONNECTION_MATRIX_PATH = 'data/disease_graph/intermediate_output/disease_connection_matrix.csv'
+CODES_PATH = 'data/disease_graph/input/codes.tsv'
+OUTPUT_HTML_PATH = "data/disease_graph/output/disease_connection_heatmap.html"
+
+# ------------------------------------------------------------------ #
+# Ensure output directory exists
+# ------------------------------------------------------------------ #
+os.makedirs(os.path.dirname(OUTPUT_HTML_PATH), exist_ok=True)
+print(f"Ensured output directory exists: {os.path.dirname(OUTPUT_HTML_PATH)}")
+
+# ------------------------------------------------------------------ #
+# 1. Load data
+# ------------------------------------------------------------------ #
 print("Loading disease connection matrix...")
-df = pd.read_csv('data/disease_graph/disease_connection_matrix.csv', index_col=0)
+df = pd.read_csv(CONNECTION_MATRIX_PATH, index_col=0)
 
-# Read the codes mapping file
 print("Loading codes mapping...")
-codes_df = pd.read_csv('data/disease_graph/codes.tsv', sep='\t')
+codes_df = pd.read_csv(CODES_PATH, sep='\t')
 code_to_name = dict(zip(codes_df['coding'], codes_df['meaning']))
 
-# Get the disease names (index/columns of the matrix)
 diseases = df.index.tolist()
 
-# Verify that all diseases in the matrix have a mapping, warn if missing
-missing_codes = [code for code in diseases if code not in code_to_name]
+# Warn about missing mappings
+missing_codes = [c for c in diseases if c not in code_to_name]
 if missing_codes:
     print(f"Warning: {len(missing_codes)} codes not found in codes.tsv: {missing_codes[:10]}...")
 
-# Verify matrix content and find top 10 largest values in the lower triangle
+# ------------------------------------------------------------------ #
+# 2. Find top-10 co-occurrences (lower triangle)
+# ------------------------------------------------------------------ #
 print("Analyzing matrix for top 10 largest values...")
-matrix = df.to_numpy(dtype=np.float64)  # Ensure float64 for numerical stability
-lower_triangle_values = []
-for i in range(len(diseases)):
-    for j in range(i):  # Only below the main diagonal
-        value = matrix[i, j]
-        if value > 0:  # Collect non-zero values
-            lower_triangle_values.append((value, diseases[i], diseases[j]))
+matrix = df.to_numpy(dtype=np.float64)
 
-# Sort and get top 10 largest values
-lower_triangle_values.sort(reverse=True)
-top_10_values = lower_triangle_values[:10]
+lower_vals = []
+for i in range(len(diseases)):
+    for j in range(i):
+        val = matrix[i, j]
+        if val > 0:
+            lower_vals.append((val, diseases[i], diseases[j]))
+
+lower_vals.sort(reverse=True)
+top_10 = lower_vals[:10]
 
 print("Top 10 largest values in the lower triangle:")
-for value, disease1, disease2 in top_10_values:
-    name1 = code_to_name.get(disease1, disease1)  # Use code if name not found
-    name2 = code_to_name.get(disease2, disease2)
-    print(f"{disease1} ({name1}) - {disease2} ({name2}): {value}")
+for val, d1, d2 in top_10:
+    n1 = code_to_name.get(d1, d1)
+    n2 = code_to_name.get(d2, d2)
+    print(f"{d1} ({n1}) - {d2} ({n2}): {val}")
 
-# Create a masked matrix for the lower triangle (excluding diagonal)
+# ------------------------------------------------------------------ #
+# 3. Build masked lower-triangle matrix + hover text
+# ------------------------------------------------------------------ #
 print("Processing lower triangle of the matrix...")
-weight_threshold = 0  # Include all non-zero values
+weight_threshold = 0
 masked_matrix = np.zeros_like(matrix, dtype=np.float64)
-hover_text = np.full_like(matrix, '', dtype=object)  # Initialize with empty strings
-non_zero_count = 0
+hover_text = np.full_like(matrix, '', dtype=object)
+non_zero = 0
+
 for i in tqdm(range(len(diseases)), desc="Extracting lower triangle"):
-    for j in range(i):  # Only below the main diagonal
-        value = matrix[i, j]
-        if value > weight_threshold:
-            masked_matrix[i, j] = value
-            name1 = code_to_name.get(diseases[i], diseases[i])  # Fallback to code if name missing
-            name2 = code_to_name.get(diseases[j], diseases[j])
-            hover_text[i, j] = f"{diseases[j]} ({name2}) - {diseases[i]} ({name1}): {value}"
-            non_zero_count += 1
+    for j in range(i):
+        val = matrix[i, j]
+        if val > weight_threshold:
+            masked_matrix[i, j] = val
+            n1 = code_to_name.get(diseases[i], diseases[i])
+            n2 = code_to_name.get(diseases[j], diseases[j])
+            hover_text[i, j] = f"{diseases[j]} ({n2}) - {diseases[i]} ({n1}): {val}"
+            non_zero += 1
 
-print(f"Non-zero values in lower triangle (threshold > {weight_threshold}): {non_zero_count}")
+print(f"Non-zero values in lower triangle (>{weight_threshold}): {non_zero}")
 
-# Create heatmap
+# ------------------------------------------------------------------ #
+# 4. Create interactive heatmap
+# ------------------------------------------------------------------ #
 print("Creating interactive heatmap...")
 fig = go.Figure(data=go.Heatmap(
     z=masked_matrix,
     x=diseases,
     y=diseases,
     text=hover_text,
-    hoverinfo='text',  # Use custom text for hover
+    hoverinfo='text',
     colorscale=[
-        [0, 'black'],  # Zero values
-        [1e-6, 'black'],  # Ensure zero is black
-        [1e-6 + 1e-9, '#440154'],  # Start of Viridis for small non-zero values
-        [5000.0 / matrix.max(), '#FDE725'],  # End of Viridis at 5,000
-        [5000.0 / matrix.max() + 1e-6, '#FF0000'],  # Bright red for > 5,000
-        [1.0, '#FF0000']  # Bright red for max
+        [0, 'black'],
+        [1e-6, 'black'],
+        [1e-6 + 1e-9, '#440154'],
+        [5000.0 / matrix.max(), '#FDE725'],
+        [5000.0 / matrix.max() + 1e-6, '#FF0000'],
+        [1.0, '#FF0000']
     ],
     zmin=0,
     zmax=matrix.max(),
-    colorbar=dict(
-        title=dict(
-            text='Co-occurrence Count',
-            side='right'
-        )
-    )
+    colorbar=dict(title=dict(text='Co-occurrence Count', side='right'))
 ))
 
-# Update layout for better visualization and interactivity
 fig.update_layout(
     title="Interactive Disease Connection Heatmap (Lower Triangle, Zeros in Black, >5K in Red)",
     xaxis_title="Disease",
     yaxis_title="Disease",
-    xaxis=dict(
-        tickangle=45,
-        tickfont=dict(size=8),
-        side='top',  # Move x-axis labels to top for better visibility
-        automargin=True
-    ),
-    yaxis=dict(
-        tickfont=dict(size=8),
-        autorange='reversed',  # Reverse y-axis to align with matrix orientation
-        automargin=True
-    ),
+    xaxis=dict(tickangle=45, tickfont=dict(size=8), side='top', automargin=True),
+    yaxis=dict(tickfont=dict(size=8), autorange='reversed', automargin=True),
     width=1200,
     height=1200,
     margin=dict(l=150, r=150, t=200, b=150),
     hovermode='closest'
 )
 
-# Save the plot as an interactive HTML file
+# ------------------------------------------------------------------ #
+# 5. Save HTML
+# ------------------------------------------------------------------ #
 print("Saving interactive heatmap...")
-fig.write_html('data/disease_graph/disease_connection_heatmap.html', auto_open=True)
-print("Interactive heatmap saved to 'data/disease_graph/disease_connection_heatmap.html'")
+fig.write_html(OUTPUT_HTML_PATH, auto_open=True)
+print(f"Interactive heatmap saved to {OUTPUT_HTML_PATH}")

@@ -1,3 +1,4 @@
+import os
 import yaml
 import pandas as pd
 
@@ -40,8 +41,31 @@ def get_healthy_eids(all_eids, disease_eids):
     """Return set of healthy participant IDs (no A00-Q99 diagnoses)."""
     return all_eids - disease_eids
 
-def print_results(disease_counts):
-    """Print the counts of participants for selected diseases and healthy participants."""
-    print("Number of participants with each disease:")
-    for disease, count in disease_counts.items():
-        print(f"  {disease}: {count}")
+
+def save_output(final_df, config, output_dir, base_name):
+    """
+    Save the final DataFrame and config YAML to the specified directory.
+
+    Args:
+        final_df (pd.DataFrame): The combined participant data.
+        config (dict): The loaded configuration dictionary.
+        output_dir (str): Directory to save files (will be created if not exists).
+        base_name (str): Base name for output files (without extension).
+    """
+    os.makedirs(output_dir, exist_ok=True)
+
+    csv_output = os.path.join(output_dir, f"{base_name}.csv")
+    yaml_output = os.path.join(output_dir, f"{base_name}.yaml")
+
+    # Save CSV
+    final_df.to_csv(csv_output, index=False)
+    print(f"\nData saved to: {csv_output}")
+
+    # Save config copy
+    with open(yaml_output, 'w') as f:
+        yaml.safe_dump(config, f, sort_keys=False)
+    print(f"Config saved to: {yaml_output}")
+
+    print(f"Total participants in combined file: {len(final_df)}")
+    print(f"Unique labels: {final_df['label'].unique()}")
+    print(f"Label distribution:\n{final_df['label'].value_counts()}")

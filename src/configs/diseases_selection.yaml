@@ -1,0 +1,21 @@
+HESIN_DATA_PATH: data/data_hesin/data_hesin.csv
+PARTICIPANT_DATA_PATH: data/proteomics/input/proteomics.csv
+OUTPUT_PATH: data/proteomics/output/proteomics_heart_healthy
+
+save_data: true
+remove_prefix: olink_instance_0.
+
+disease_selection:
+  heart_disease: true
+  lung_disease: false
+  diabetes: false
+  cancer: false
+  hypertension: false
+  stroke: false
+  kidney_disease: false
+  liver_disease: false
+  mental_disorders: false
+  cognitive_disorders: false
+  inflammatory_diseases: false
+  digestive_system_diseases: false
+  healthy: true
