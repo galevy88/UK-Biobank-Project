@@ -10,6 +10,16 @@ filter_step:
       young: { min: 40, max: 55 }
       old: { min: 56, max: 69 }
 
-disease_score_step:
+bootstrap_step:
   INPUT_DATA_DIR: data/pipelines/z_score_pipeline/exp1/filtered_data/
+  OUTPUT_BASE_DIR: data/pipelines/z_score_pipeline/
+  FIELDS_TO_KEEP:
+    - dnx_hesin_diag_id
+    - eid
+    - diag_icd10
+  SHUFFLE_ITERATIONS: 10
+  SAVE_BOOTSTRAP_DATA: false
+
+disease_score_step:
+  INPUT_DATA_DIR: data/pipelines/z_score_pipeline/exp1/bootstraped_hesin_data/
   OUTPUT_BASE_DIR: data/pipelines/z_score_pipeline/
