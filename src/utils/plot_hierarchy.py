@@ -171,7 +171,7 @@ def plot_hierarchy(yaml_file_path, output_html_path):
             var wanted = getSelectedLeaves();
             var unwanted = getRejectedLeaves();
 
-            var yamlContentWanted = 'wanted_codes:\\n' + wanted.map(function(id) {{ return '  - ' + id; }}).join('\\n');
+            var yamlContentWanted = 'codes:\\n' + wanted.map(function(id) {{ return '  - ' + id; }}).join('\\n');
             var blobWanted = new Blob([yamlContentWanted], {{ type: 'text/yaml' }});
             var urlWanted = URL.createObjectURL(blobWanted);
             var aWanted = document.createElement('a');
@@ -182,7 +182,7 @@ def plot_hierarchy(yaml_file_path, output_html_path):
             document.body.removeChild(aWanted);
             URL.revokeObjectURL(urlWanted);
 
-            var yamlContentUnwanted = 'unwanted_codes:\\n' + unwanted.map(function(id) {{ return '  - ' + id; }}).join('\\n');
+            var yamlContentUnwanted = 'codes:\\n' + unwanted.map(function(id) {{ return '  - ' + id; }}).join('\\n');
             var blobUnwanted = new Blob([yamlContentUnwanted], {{ type: 'text/yaml' }});
             var urlUnwanted = URL.createObjectURL(blobUnwanted);
             var aUnwanted = document.createElement('a');
