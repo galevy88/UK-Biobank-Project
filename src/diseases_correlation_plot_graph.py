@@ -2,10 +2,15 @@ import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
 from tqdm import tqdm
-import os                     # <-- NEW
+import os
+
+# Set working directory to src (script directory)
+SRC_DIR = os.path.dirname(os.path.abspath(__file__))
+os.chdir(SRC_DIR)
+print(f"Working directory set to: {os.getcwd()}")
 
 # === CONFIGURATION ===
-CONNECTION_MATRIX_PATH = 'data/disease_graph/intermediate_output/disease_connection_matrix.csv'
+CONNECTION_MATRIX_PATH = 'data/disease_graph/intermediate_output/exp1/old_disease_connection_matrix.csv'
 CODES_PATH = 'data/disease_graph/input/codes.tsv'
 OUTPUT_HTML_PATH = "data/disease_graph/output/disease_connection_heatmap.html"
 
