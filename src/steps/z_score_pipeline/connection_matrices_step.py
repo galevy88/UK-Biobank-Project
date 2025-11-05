@@ -3,6 +3,8 @@ import numpy as np
 from itertools import combinations
 from tqdm import tqdm
 import os
+import glob
+import re
 
 
 def process_disease_dataframe(df, verbose=False):
@@ -194,24 +196,23 @@ def process_single_file(input_file_path, output_matrix_path):
     process_single_dataframe(df, output_matrix_path, dataset_name)
 
 
-def connection_matrices_step(original_data_dir, shuffled_dfs, output_base_dir, experiment_name, shuffle_iterations):
+def connection_matrices_step(original_data_dir, bootstrap_data_dir, output_base_dir, experiment_name):
     """
     Process original and shuffled DataFrames to create co-occurrence matrices.
     
     Args:
         original_data_dir: Path to directory containing original filtered CSV files
-        shuffled_dfs: List of shuffled DataFrames from bootstrap step
+        bootstrap_data_dir: Path to directory containing bootstrap CSV files (organized by subdirectories)
         output_base_dir: Base directory for saving outputs
         experiment_name: Experiment name to append to output directory
-        shuffle_iterations: Number of bootstrap iterations (for organizing output)
     """
     print("\n" + "="*70)
     print("Starting Connection Matrices Step")
     print("="*70)
     print(f"Experiment: {experiment_name}")
     print(f"Original data directory: {original_data_dir}")
+    print(f"Bootstrap data directory: {bootstrap_data_dir}")
     print(f"Output base directory: {output_base_dir}")
-    print(f"Number of shuffled DataFrames: {len(shuffled_dfs)}")
     
     # Set working directory to src (parent of steps directory)
     # File is at: src/steps/z_score_pipeline/connection_matrices_step.py
@@ -220,10 +221,14 @@ def connection_matrices_step(original_data_dir, shuffled_dfs, output_base_dir, e
     os.chdir(SRC_DIR)
     print(f"Working directory set to: {os.getcwd()}")
     
-    # Resolve original_data_dir to absolute path if it's relative
+    # Resolve paths to absolute paths if they're relative
     if not os.path.isabs(original_data_dir):
         original_data_dir = os.path.abspath(original_data_dir)
     print(f"Resolved original data directory: {original_data_dir}")
+    
+    if not os.path.isabs(bootstrap_data_dir):
+        bootstrap_data_dir = os.path.abspath(bootstrap_data_dir)
+    print(f"Resolved bootstrap data directory: {bootstrap_data_dir}")
     
     # Create output directories
     base_output_dir = os.path.join(output_base_dir, experiment_name, "connection_matrices")
@@ -243,7 +248,6 @@ def connection_matrices_step(original_data_dir, shuffled_dfs, output_base_dir, e
     # Process original DataFrames
     # ------------------------------------------------------------------ #
     print(f"\n[Step 1/2] Processing original DataFrames...")
-    import glob
     original_csv_files = glob.glob(os.path.join(original_data_dir, "*.csv"))
     
     if not original_csv_files:
@@ -275,50 +279,70 @@ def connection_matrices_step(original_data_dir, shuffled_dfs, output_base_dir, e
             total_processed += 1
     
     # ------------------------------------------------------------------ #
-    # Process shuffled DataFrames
+    # Process bootstrap DataFrames from directory
     # ------------------------------------------------------------------ #
-    print(f"\n[Step 2/2] Processing shuffled DataFrames...")
+    print(f"\n[Step 2/2] Processing bootstrap DataFrames from directory...")
     
-    if not shuffled_dfs:
-        print(f"  ⚠ Warning: No shuffled DataFrames provided")
+    if not os.path.exists(bootstrap_data_dir):
+        print(f"  ⚠ Warning: Bootstrap data directory does not exist: {bootstrap_data_dir}")
     else:
-        print(f"  ✓ Processing {len(shuffled_dfs):,} shuffled DataFrame(s)")
+        # Find all subdirectories in bootstrap_data_dir
+        bootstrap_subdirs = [d for d in glob.glob(os.path.join(bootstrap_data_dir, "*")) 
+                            if os.path.isdir(d)]
         
-        # Group shuffled DataFrames by their source type
-        # We need to infer the type from the order: first N are from first file, next N from second file, etc.
-        if original_csv_files:
-            num_original_files = len(original_csv_files)
-            dfs_per_file = len(shuffled_dfs) // num_original_files
+        if not bootstrap_subdirs:
+            print(f"  ⚠ Warning: No subdirectories found in {bootstrap_data_dir}")
+        else:
+            print(f"  ✓ Found {len(bootstrap_subdirs):,} bootstrap type(s)")
             
-            for file_idx, csv_file in enumerate(original_csv_files):
-                file_name = os.path.basename(csv_file)
-                base_name = os.path.splitext(file_name)[0]
+            # Process each subdirectory (each represents a filter type)
+            for subdir in sorted(bootstrap_subdirs):
+                type_name = os.path.basename(subdir)
                 
-                # Remove "_filtered" suffix if present
-                if base_name.endswith('_filtered'):
-                    base_name = base_name[:-9]
+                # Remove "_filtered" suffix if present for cleaner names
+                if type_name.endswith('_filtered'):
+                    base_name = type_name[:-9]  # Remove "_filtered"
+                else:
+                    base_name = type_name
                 
-                # Create subdirectory for this bootstrap type
+                # Find all CSV files in this subdirectory
+                bootstrap_csv_files = sorted(glob.glob(os.path.join(subdir, "*.csv")))
+                
+                if not bootstrap_csv_files:
+                    print(f"  ⚠ Warning: No CSV files found in {subdir}")
+                    continue
+                
+                print(f"\n  Processing bootstrap matrices for: {base_name} ({len(bootstrap_csv_files):,} files)")
+                
+                # Create subdirectory for this bootstrap type in output
                 type_bootstrap_dir = os.path.join(bootstrap_output_dir, base_name)
                 os.makedirs(type_bootstrap_dir, exist_ok=True)
                 
-                # Get the shuffled DataFrames for this file
-                start_idx = file_idx * dfs_per_file
-                end_idx = start_idx + dfs_per_file
-                file_shuffled_dfs = shuffled_dfs[start_idx:end_idx]
-                
-                print(f"\n  Processing bootstrap matrices for: {base_name} ({len(file_shuffled_dfs):,} versions)")
-                
-                # Process each shuffled DataFrame with progress bar
-                for bootstrap_idx, df_shuffled in enumerate(tqdm(file_shuffled_dfs, 
-                                                                  desc=f"  {base_name} bootstrap",
-                                                                  leave=False), 1):
+                # Process each bootstrap file
+                for bootstrap_csv_file in tqdm(bootstrap_csv_files, 
+                                               desc=f"  {base_name} bootstrap",
+                                               leave=False):
+                    # Extract bootstrap index from filename (e.g., "young_filtered_1.csv" -> 1)
+                    file_basename = os.path.basename(bootstrap_csv_file)
+                    # Try to extract the number from the filename
+                    # Pattern: {type}_{number}.csv or {type}_filtered_{number}.csv
+                    match = re.search(r'_(\d+)\.csv$', file_basename)
+                    if match:
+                        bootstrap_idx = int(match.group(1))
+                    else:
+                        # Fallback: use the index in the sorted list
+                        bootstrap_idx = bootstrap_csv_files.index(bootstrap_csv_file) + 1
+                    
+                    # Load and process the bootstrap file
+                    df_bootstrap = pd.read_csv(bootstrap_csv_file)
+                    
+                    # Create output filename
                     output_matrix_file = f"{base_name}_bootstrap_{bootstrap_idx}_disease_connection_matrix.csv"
                     output_matrix_path = os.path.join(type_bootstrap_dir, output_matrix_file)
                     
                     # Process and save (quiet mode)
                     process_single_dataframe(
-                        df_shuffled, 
+                        df_bootstrap, 
                         output_matrix_path, 
                         f"bootstrap_{base_name}_{bootstrap_idx}",
                         verbose=False
@@ -331,7 +355,12 @@ def connection_matrices_step(original_data_dir, shuffled_dfs, output_base_dir, e
     print(f"Summary:")
     print(f"  - Processed {total_processed:,} dataset(s) total")
     print(f"  - Original datasets: {len(original_csv_files) if original_csv_files else 0}")
-    print(f"  - Bootstrap datasets: {len(shuffled_dfs)}")
+    # Count bootstrap files
+    bootstrap_count = 0
+    if os.path.exists(bootstrap_data_dir):
+        for subdir in [d for d in glob.glob(os.path.join(bootstrap_data_dir, "*")) if os.path.isdir(d)]:
+            bootstrap_count += len(glob.glob(os.path.join(subdir, "*.csv")))
+    print(f"  - Bootstrap datasets: {bootstrap_count}")
     print(f"  - Output directory: {base_output_dir}")
     print("="*70 + "\n")
 
