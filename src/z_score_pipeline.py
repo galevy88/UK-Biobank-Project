@@ -3,6 +3,7 @@ import os
 from steps.z_score_pipeline.filter_step import filter_step
 from steps.z_score_pipeline.bootstrap_step import bootstrap_step
 from steps.z_score_pipeline.connection_matrices_step import connection_matrices_step
+from steps.z_score_pipeline.calculate_ci_step import calculate_ci_step
 
 def read_config():
     # Set working directory to src (script directory)
@@ -15,20 +16,26 @@ def read_config():
 
 if __name__ == '__main__':
     config = read_config()
+    
+    # Initialize experiment_name (will be set by filter_step if present)
+    experiment_name = None
 
     # Filter step configuration
-    experiment_name = config['filter_step']['experiment_name']
-    hesin_data_path = config['filter_step']['HESIN_DATA_PATH']
-    codes_path = config['filter_step']['CODES_PATH']
-    method = config['filter_step']['method']
-    filter_path = config['filter_step']['FILTER_PATH']
-    output_path = config['filter_step']['OUTPUT_PATH']
-    filteration = config['filter_step']['filteration']
-
-    # Run filter step
-    filter_step(experiment_name, hesin_data_path, codes_path, method, filter_path, output_path, filteration)
+    if 'filter_step' in config:
+        experiment_name = config['filter_step']['experiment_name']
+        hesin_data_path = config['filter_step']['HESIN_DATA_PATH']
+        codes_path = config['filter_step']['CODES_PATH']
+        method = config['filter_step']['method']
+        filter_path = config['filter_step']['FILTER_PATH']
+        output_path = config['filter_step']['OUTPUT_PATH']
+        filteration = config['filter_step']['filteration']
+        
+        # Run filter step
+        filter_step(experiment_name, hesin_data_path, codes_path, method, filter_path, output_path, filteration)
 
     # Bootstrap step configuration
+    shuffled_dfs = []
+    shuffle_iterations = 0
     if 'bootstrap_step' in config:
         # Fix the input directory to use the correct experiment name from filter_step
         # This ensures bootstrap step reads from the same filtered_data directory that filter_step created
@@ -39,15 +46,41 @@ if __name__ == '__main__':
         save_bootstrap_data = config['bootstrap_step'].get('SAVE_BOOTSTRAP_DATA', True)
         
         # Run bootstrap step - it will automatically detect all CSV files in the input directory
-        bootstrap_step(experiment_name, bootstrap_input_dir, bootstrap_output_base_dir, 
-                      fields_to_keep, shuffle_iterations, save_bootstrap_data)
+        # Capture the returned shuffled DataFrames
+        shuffled_dfs = bootstrap_step(experiment_name, bootstrap_input_dir, bootstrap_output_base_dir, 
+                                      fields_to_keep, shuffle_iterations, save_bootstrap_data)
+        
+        if shuffled_dfs is None:
+            shuffled_dfs = []
 
     # Disease score step configuration
+    connection_matrices = {}
     if 'disease_score_step' in config:
         original_data_dir = os.path.join(config['filter_step']['OUTPUT_PATH'], experiment_name, "filtered_data")
-        bootstrap_data_dir = os.path.join(config['bootstrap_step']['OUTPUT_BASE_DIR'], experiment_name, "bootstraped_hesin_data")
         output_base_dir = config['disease_score_step']['OUTPUT_BASE_DIR']
         
-        # Run connection matrices step with original and bootstrap directories
-        connection_matrices_step(original_data_dir, bootstrap_data_dir, output_base_dir, experiment_name)
+        # Run connection matrices step with original data directory and shuffled DataFrames
+        # Capture the returned connection matrices
+        if shuffled_dfs:
+            connection_matrices = connection_matrices_step(original_data_dir, shuffled_dfs, output_base_dir, experiment_name, shuffle_iterations)
+        else:
+            print("  ⚠ Warning: No shuffled DataFrames available. Skipping connection matrices step.")
+
+    # Calculate CI step configuration
+    ci_matrices = {}
+    if 'calculate_ci_step' in config:
+        # Get experiment_name if not already set
+        if experiment_name is None:
+            experiment_name = config['calculate_ci_step'].get('experiment_name')
+            if experiment_name is None:
+                raise ValueError("experiment_name must be specified in filter_step or calculate_ci_step configuration")
+        
+        output_base_dir = config['calculate_ci_step'].get('OUTPUT_BASE_DIR', config.get('disease_score_step', {}).get('OUTPUT_BASE_DIR'))
+        z_alpha = config['calculate_ci_step'].get('Z_ALPHA', 1.96)
+        
+        # Run calculate CI step with connection matrices
+        if connection_matrices:
+            ci_matrices = calculate_ci_step(connection_matrices, output_base_dir, experiment_name, z_alpha)
+        else:
+            print("  ⚠ Warning: No connection matrices available. Skipping calculate CI step.")
 

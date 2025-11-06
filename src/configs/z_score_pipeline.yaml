@@ -1,0 +1,30 @@
+filter_step:
+  experiment_name: exp1
+  HESIN_DATA_PATH: data/data_hesin/data_hesin.csv
+  CODES_PATH: data/pipelines/z_score_pipeline/codes_files/wanted_diseases.yaml
+  method: keep # can also be "drop"
+  FILTER_PATH: data/information_data/eid_age_sex.csv
+  OUTPUT_PATH: data/pipelines/z_score_pipeline/
+  filteration:
+    Age at recruitment:
+      young: { min: 40, max: 55 }
+      old: { min: 56, max: 69 }
+
+bootstrap_step:
+  INPUT_DATA_DIR: data/pipelines/z_score_pipeline/exp1/filtered_data/
+  OUTPUT_BASE_DIR: data/pipelines/z_score_pipeline/
+  FIELDS_TO_KEEP:
+    - dnx_hesin_diag_id
+    - eid
+    - diag_icd10
+  SHUFFLE_ITERATIONS: 10
+  SAVE_BOOTSTRAP_DATA: true
+
+disease_score_step:
+  INPUT_DATA_DIR: data/pipelines/z_score_pipeline/exp1/bootstraped_hesin_data/
+  OUTPUT_BASE_DIR: data/pipelines/z_score_pipeline/
+
+calculate_ci_step:
+  OUTPUT_BASE_DIR: data/pipelines/z_score_pipeline/
+  Z_ALPHA: 1.96  # Z-score for 95% confidence interval (use 2.576 for 99% CI)
+
