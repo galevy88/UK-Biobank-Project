@@ -10,9 +10,9 @@ os.chdir(SRC_DIR)
 print(f"Working directory set to: {os.getcwd()}")
 
 # === CONFIGURATION ===
-CONNECTION_MATRIX_PATH = 'data/disease_graph/intermediate_output/exp1/old_disease_connection_matrix.csv'
+CONNECTION_MATRIX_PATH = 'data/pipelines/z_score_pipeline/poc/ci_analysis/young_upper_ci_analysis.csv'
 CODES_PATH = 'data/disease_graph/input/codes.tsv'
-OUTPUT_HTML_PATH = "data/disease_graph/output/disease_connection_heatmap.html"
+OUTPUT_HTML_PATH = "data/disease_graph/output/disease_connection_heatmap_poc.html"
 
 # ------------------------------------------------------------------ #
 # Ensure output directory exists
@@ -84,22 +84,34 @@ print(f"Non-zero values in lower triangle (>{weight_threshold}): {non_zero}")
 # 4. Create interactive heatmap
 # ------------------------------------------------------------------ #
 print("Creating interactive heatmap...")
+
+# Calculate colorscale thresholds (convert numpy values to Python floats)
+matrix_max = float(matrix.max())
+threshold_value = 5000.0
+threshold_normalized = float(threshold_value / matrix_max) if matrix_max > 0 else 1.0
+
+# Ensure threshold is within valid range [0, 1]
+threshold_normalized = min(max(threshold_normalized, 0.0), 1.0)
+
+# Build colorscale with Python floats (not numpy types)
+colorscale = [
+    [0.0, 'black'],
+    [1e-6, 'black'],
+    [float(1e-6 + 1e-9), '#440154'],
+    [threshold_normalized, '#FDE725'],
+    [float(threshold_normalized + 1e-6) if threshold_normalized < 1.0 else 1.0, '#FF0000'],
+    [1.0, '#FF0000']
+]
+
 fig = go.Figure(data=go.Heatmap(
     z=masked_matrix,
     x=diseases,
     y=diseases,
     text=hover_text,
     hoverinfo='text',
-    colorscale=[
-        [0, 'black'],
-        [1e-6, 'black'],
-        [1e-6 + 1e-9, '#440154'],
-        [5000.0 / matrix.max(), '#FDE725'],
-        [5000.0 / matrix.max() + 1e-6, '#FF0000'],
-        [1.0, '#FF0000']
-    ],
+    colorscale=colorscale,
     zmin=0,
-    zmax=matrix.max(),
+    zmax=matrix_max,
     colorbar=dict(title=dict(text='Co-occurrence Count', side='right'))
 ))
 

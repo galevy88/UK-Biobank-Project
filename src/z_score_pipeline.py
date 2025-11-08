@@ -4,6 +4,7 @@ from steps.z_score_pipeline.filter_step import filter_step
 from steps.z_score_pipeline.bootstrap_step import bootstrap_step
 from steps.z_score_pipeline.connection_matrices_step import connection_matrices_step
 from steps.z_score_pipeline.calculate_ci_step import calculate_ci_step
+from steps.z_score_pipeline.analyze_ci_step import analyze_ci_step
 
 def read_config():
     # Set working directory to src (script directory)
@@ -17,12 +18,13 @@ def read_config():
 if __name__ == '__main__':
     config = read_config()
     
-    # Initialize experiment_name (will be set by filter_step if present)
-    experiment_name = None
+    # Get experiment_name from top-level config
+    experiment_name = config.get('experiment_name')
+    if experiment_name is None:
+        raise ValueError("experiment_name must be specified at the top level of the configuration")
 
     # Filter step configuration
     if 'filter_step' in config:
-        experiment_name = config['filter_step']['experiment_name']
         hesin_data_path = config['filter_step']['HESIN_DATA_PATH']
         codes_path = config['filter_step']['CODES_PATH']
         method = config['filter_step']['method']
@@ -69,12 +71,6 @@ if __name__ == '__main__':
     # Calculate CI step configuration
     ci_matrices = {}
     if 'calculate_ci_step' in config:
-        # Get experiment_name if not already set
-        if experiment_name is None:
-            experiment_name = config['calculate_ci_step'].get('experiment_name')
-            if experiment_name is None:
-                raise ValueError("experiment_name must be specified in filter_step or calculate_ci_step configuration")
-        
         output_base_dir = config['calculate_ci_step'].get('OUTPUT_BASE_DIR', config.get('disease_score_step', {}).get('OUTPUT_BASE_DIR'))
         z_alpha = config['calculate_ci_step'].get('Z_ALPHA', 1.96)
         
@@ -83,4 +79,20 @@ if __name__ == '__main__':
             ci_matrices = calculate_ci_step(connection_matrices, output_base_dir, experiment_name, z_alpha)
         else:
             print("  ⚠ Warning: No connection matrices available. Skipping calculate CI step.")
+
+    # Analyze CI step configuration
+    analysis_results = {}
+    if 'analyze_ci_step' in config:
+        output_base_dir = config['analyze_ci_step'].get('OUTPUT_BASE_DIR', config.get('calculate_ci_step', {}).get('OUTPUT_BASE_DIR', config.get('disease_score_step', {}).get('OUTPUT_BASE_DIR')))
+        upper_threshold = config['analyze_ci_step'].get('UPPER_THRESHOLD', 3.0)
+        lower_threshold = config['analyze_ci_step'].get('LOWER_THRESHOLD', 3.0)
+        
+        # Run analyze CI step with connection matrices and CI matrices
+        if connection_matrices and ci_matrices:
+            analysis_results = analyze_ci_step(connection_matrices, ci_matrices, output_base_dir, experiment_name, upper_threshold, lower_threshold)
+        else:
+            if not connection_matrices:
+                print("  ⚠ Warning: No connection matrices available. Skipping analyze CI step.")
+            if not ci_matrices:
+                print("  ⚠ Warning: No CI matrices available. Skipping analyze CI step.")
 
