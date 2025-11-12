@@ -1,9 +1,9 @@
 # Global experiment configuration
-experiment_name: poc
+experiment_name: kobi_track
 
 filter_step:
   HESIN_DATA_PATH: data/data_hesin/data_hesin.csv
-  CODES_PATH: data/pipelines/z_score_pipeline/codes_files/poc.yaml
+  CODES_PATH: data/pipelines/z_score_pipeline/codes_files/kobi_track.yaml
   method: keep # can also be "drop"
   FILTER_PATH: data/information_data/eid_age_sex.csv
   OUTPUT_PATH: data/pipelines/z_score_pipeline/
@@ -30,6 +30,6 @@ calculate_ci_step:
 
 analyze_ci_step:
   OUTPUT_BASE_DIR: data/pipelines/z_score_pipeline/
-  UPPER_THRESHOLD: 2.0  # Threshold multiplier for upper CI comparison
-  LOWER_THRESHOLD: 10.0  # Threshold multiplier for lower CI comparison
+  UPPER_THRESHOLD: 0.0  # Threshold multiplier for upper CI comparison
+  LOWER_THRESHOLD: 0.0  # Threshold multiplier for lower CI comparison
 

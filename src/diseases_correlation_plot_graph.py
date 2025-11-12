@@ -10,9 +10,9 @@ os.chdir(SRC_DIR)
 print(f"Working directory set to: {os.getcwd()}")
 
 # === CONFIGURATION ===
-CONNECTION_MATRIX_PATH = 'data/pipelines/z_score_pipeline/poc/ci_analysis/young_upper_ci_analysis.csv'
+CONNECTION_MATRIX_PATH = 'data/pipelines/z_score_pipeline/kobi_track/ci_analysis/old_upper_ci_analysis_minus_young_upper_ci_analysis.csv'
 CODES_PATH = 'data/disease_graph/input/codes.tsv'
-OUTPUT_HTML_PATH = "data/disease_graph/output/disease_connection_heatmap_poc.html"
+OUTPUT_HTML_PATH = "data/disease_graph/output/disease_connection_heatmap_kobi_track_old_minus_young.html"
 
 # ------------------------------------------------------------------ #
 # Ensure output directory exists
@@ -40,21 +40,21 @@ if missing_codes:
 # ------------------------------------------------------------------ #
 # 2. Find top-10 co-occurrences (lower triangle)
 # ------------------------------------------------------------------ #
-print("Analyzing matrix for top 10 largest values...")
+print("Analyzing matrix for top 10 largest absolute values...")
 matrix = df.to_numpy(dtype=np.float64)
 
 lower_vals = []
 for i in range(len(diseases)):
     for j in range(i):
         val = matrix[i, j]
-        if val > 0:
-            lower_vals.append((val, diseases[i], diseases[j]))
+        # Include all values (positive and negative)
+        lower_vals.append((abs(val), val, diseases[i], diseases[j]))
 
 lower_vals.sort(reverse=True)
 top_10 = lower_vals[:10]
 
-print("Top 10 largest values in the lower triangle:")
-for val, d1, d2 in top_10:
+print("Top 10 largest absolute values in the lower triangle:")
+for abs_val, val, d1, d2 in top_10:
     n1 = code_to_name.get(d1, d1)
     n2 = code_to_name.get(d2, d2)
     print(f"{d1} ({n1}) - {d2} ({n2}): {val}")
@@ -71,11 +71,12 @@ non_zero = 0
 for i in tqdm(range(len(diseases)), desc="Extracting lower triangle"):
     for j in range(i):
         val = matrix[i, j]
-        if val > weight_threshold:
-            masked_matrix[i, j] = val
-            n1 = code_to_name.get(diseases[i], diseases[i])
-            n2 = code_to_name.get(diseases[j], diseases[j])
-            hover_text[i, j] = f"{diseases[j]} ({n2}) - {diseases[i]} ({n1}): {val}"
+        n1 = code_to_name.get(diseases[i], diseases[i])
+        n2 = code_to_name.get(diseases[j], diseases[j])
+        # Include all values (positive, negative, and zero)
+        masked_matrix[i, j] = val
+        hover_text[i, j] = f"{diseases[j]} ({n2}) - {diseases[i]} ({n1}): {val:.6f}"
+        if val != 0:
             non_zero += 1
 
 print(f"Non-zero values in lower triangle (>{weight_threshold}): {non_zero}")
@@ -85,23 +86,97 @@ print(f"Non-zero values in lower triangle (>{weight_threshold}): {non_zero}")
 # ------------------------------------------------------------------ #
 print("Creating interactive heatmap...")
 
-# Calculate colorscale thresholds (convert numpy values to Python floats)
+# Calculate matrix min and max (convert numpy values to Python floats)
+matrix_min = float(matrix.min())
 matrix_max = float(matrix.max())
-threshold_value = 5000.0
-threshold_normalized = float(threshold_value / matrix_max) if matrix_max > 0 else 1.0
+matrix_range = matrix_max - matrix_min
 
-# Ensure threshold is within valid range [0, 1]
-threshold_normalized = min(max(threshold_normalized, 0.0), 1.0)
+print(f"Matrix value range: [{matrix_min:.6f}, {matrix_max:.6f}]")
 
-# Build colorscale with Python floats (not numpy types)
-colorscale = [
-    [0.0, 'black'],
-    [1e-6, 'black'],
-    [float(1e-6 + 1e-9), '#440154'],
-    [threshold_normalized, '#FDE725'],
-    [float(threshold_normalized + 1e-6) if threshold_normalized < 1.0 else 1.0, '#FF0000'],
-    [1.0, '#FF0000']
-]
+# Normalize thresholds -1 and 1 to [0, 1] range for colorscale
+# Formula: normalized_value = (value - matrix_min) / (matrix_max - matrix_min)
+def normalize_value(val):
+    if matrix_range == 0:
+        return 0.5
+    return (val - matrix_min) / matrix_range
+
+normalized_minus_1 = normalize_value(-1.0) if matrix_min < -1.0 else None
+normalized_1 = normalize_value(1.0) if matrix_max > 1.0 else None
+normalized_0 = normalize_value(0.0)
+
+epsilon = 1e-6
+dark_gray = '#1a1a1a'  # Very dark gray, much closer to black
+
+# Build colorscale with three regions:
+# - Values < -1: blue scale (tendency to appear more in young)
+# - Values between -1 to 1: black-gray scale
+# - Values > 1: red scale (tendency to appear more in old)
+colorscale = []
+
+# Determine the actual range we need to cover
+actual_start = 0.0
+actual_end = 1.0
+
+# Handle values below -1 (blue scale)
+if normalized_minus_1 is not None and normalized_minus_1 > 0:
+    # Blue gradient from dark blue to lighter blue
+    colorscale.append([0.0, '#000080'])  # Dark blue for minimum value
+    if normalized_minus_1 > epsilon * 2:
+        colorscale.append([max(epsilon, normalized_minus_1 * 0.5), '#4169E1'])  # Royal blue
+    colorscale.append([normalized_minus_1, '#87CEEB'])  # Sky blue at -1
+    actual_start = 0.0
+else:
+    # If no values below -1, start from the actual minimum
+    actual_start = 0.0
+    colorscale.append([0.0, dark_gray])  # Start with dark gray
+
+# Handle values between -1 and 1 (black-gray scale)
+start_gray = normalized_minus_1 if normalized_minus_1 is not None else 0.0
+end_gray = normalized_1 if normalized_1 is not None else 1.0
+
+# Black-gray gradient for -1 to 1 range
+if start_gray < end_gray:
+    if start_gray > actual_start:
+        colorscale.append([start_gray, dark_gray])  # Dark gray at -1
+    # Add black at 0 if 0 is within the range
+    if normalized_0 is not None and max(start_gray, actual_start) < normalized_0 < end_gray:
+        colorscale.append([normalized_0, 'black'])  # Black at 0
+    colorscale.append([end_gray, dark_gray])  # Dark gray at 1
+
+# Handle values above 1 (red scale)
+if normalized_1 is not None and normalized_1 < 1.0:
+    # Red gradient from dark red to bright red
+    colorscale.append([min(normalized_1 + epsilon, 1.0), '#8B0000'])  # Dark red just above 1
+    mid_red = normalized_1 + (1.0 - normalized_1) * 0.5
+    if mid_red < 1.0 - epsilon:
+        colorscale.append([mid_red, '#DC143C'])  # Crimson
+    colorscale.append([1.0, '#FF0000'])  # Bright red for maximum value
+    actual_end = 1.0
+else:
+    # If no values above 1, end with dark gray
+    if end_gray < 1.0:
+        colorscale.append([1.0, dark_gray])
+
+# Ensure colorscale is sorted by first element and remove duplicates
+colorscale.sort(key=lambda x: x[0])
+# Remove duplicate positions (keep the last one for each position)
+unique_colorscale = []
+seen_positions = set()
+for pos, color in reversed(colorscale):
+    if pos not in seen_positions:
+        unique_colorscale.append([pos, color])
+        seen_positions.add(pos)
+colorscale = sorted(unique_colorscale, key=lambda x: x[0])
+
+# Ensure we have entries at 0.0 and 1.0
+if colorscale[0][0] > 0.0:
+    # Find the color at the start
+    colorscale.insert(0, [0.0, colorscale[0][1]])
+if colorscale[-1][0] < 1.0:
+    # Find the color at the end
+    colorscale.append([1.0, colorscale[-1][1]])
+
+print(f"Colorscale thresholds: -1 normalized to {normalized_minus_1}, 1 normalized to {normalized_1}")
 
 fig = go.Figure(data=go.Heatmap(
     z=masked_matrix,
@@ -110,13 +185,18 @@ fig = go.Figure(data=go.Heatmap(
     text=hover_text,
     hoverinfo='text',
     colorscale=colorscale,
-    zmin=0,
+    zmin=matrix_min,
     zmax=matrix_max,
-    colorbar=dict(title=dict(text='Co-occurrence Count', side='right'))
+    colorbar=dict(
+        title=dict(
+            text='Difference (Old - Young)<br><span style="font-size:10px;">Blue (< -1): More in Young | Gray (-1 to 1): Similar | Red (> 1): More in Old</span>',
+            side='right'
+        )
+    )
 ))
 
 fig.update_layout(
-    title="Interactive Disease Connection Heatmap (Lower Triangle, Zeros in Black, >5K in Red)",
+    title="Interactive Disease Connection Heatmap (Lower Triangle: Blue=Young, Gray=Similar, Red=Old)",
     xaxis_title="Disease",
     yaxis_title="Disease",
     xaxis=dict(tickangle=45, tickfont=dict(size=8), side='top', automargin=True),

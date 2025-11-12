@@ -1,6 +1,8 @@
 import pandas as pd
 import yaml
 import os
+import argparse
+import sys
 from itertools import product
 
 
@@ -169,3 +171,126 @@ def filter_step(experiment_name, hesin_data_path, codes_path, method, filter_pat
     print(f"  - Final merged records: {len(merged_df):,}")
     print(f"  - Unique participants: {merged_df['eid'].nunique():,}")
     print("="*70 + "\n")
+
+
+if __name__ == "__main__":
+    # Set working directory to src (script directory)
+    SRC_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    os.chdir(SRC_DIR)
+    print(f"Working directory set to: {os.getcwd()}")
+    
+    parser = argparse.ArgumentParser(
+        description='Run filter_step standalone without the full pipeline',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  # Using a config file:
+  python src/steps/z_score_pipeline/filter_step.py --config configs/z_score_pipeline.yaml
+  
+  # Using command-line arguments:
+  python src/steps/z_score_pipeline/filter_step.py \\
+    --experiment-name my_experiment \\
+    --hesin-data data/data_hesin/data_hesin.csv \\
+    --codes data/pipelines/z_score_pipeline/codes_files/kobi_track.yaml \\
+    --method keep \\
+    --filter-path data/information_data/eid_age_sex.csv \\
+    --output data/pipelines/z_score_pipeline/
+        """
+    )
+    
+    # Config file option
+    parser.add_argument(
+        '--config',
+        type=str,
+        default='configs/z_score_pipeline.yaml',
+        help='Path to YAML config file (default: configs/z_score_pipeline.yaml). If provided, other arguments are ignored.'
+    )
+    
+    # Individual arguments
+    parser.add_argument('--experiment-name', type=str, help='Experiment name')
+    parser.add_argument('--hesin-data', type=str, help='Path to HESIN data CSV file')
+    parser.add_argument('--codes', type=str, help='Path to disease codes YAML file')
+    parser.add_argument('--method', type=str, choices=['keep', 'drop'], help='Filter method: keep or drop')
+    parser.add_argument('--filter-path', type=str, help='Path to filter data CSV (eid_age_sex)')
+    parser.add_argument('--output', type=str, help='Base output path')
+    parser.add_argument('--no-filteration', action='store_true', help='Skip additional filtering (save merged data only)')
+    
+    args = parser.parse_args()
+    
+    # Check if config file exists (default or specified)
+    use_config = False
+    if args.config and os.path.exists(args.config):
+        use_config = True
+    elif args.config and not os.path.exists(args.config):
+        # Config file specified but doesn't exist
+        if not any([args.experiment_name, args.hesin_data, args.codes, args.method, args.filter_path, args.output]):
+            # No other arguments provided, show error
+            parser.error(f"Config file '{args.config}' not found and no other arguments provided.\n"
+                        f"Please either:\n"
+                        f"  1. Provide a valid config file with --config\n"
+                        f"  2. Provide all required arguments: --experiment-name, --hesin-data, --codes, --method, --filter-path, --output")
+        else:
+            # Other arguments provided, use them instead
+            print(f"⚠ Warning: Config file '{args.config}' not found. Using command-line arguments instead.")
+            use_config = False
+    
+    # Load from config file if available
+    if use_config:
+        print(f"Loading configuration from {args.config}...")
+        with open(args.config, 'r') as file:
+            config = yaml.safe_load(file)
+        
+        # Get experiment_name from top-level config
+        experiment_name = config.get('experiment_name')
+        if experiment_name is None:
+            raise ValueError("experiment_name must be specified at the top level of the configuration")
+        
+        # Get filter_step configuration
+        if 'filter_step' not in config:
+            raise ValueError("filter_step section not found in configuration file")
+        
+        filter_config = config['filter_step']
+        hesin_data_path = filter_config['HESIN_DATA_PATH']
+        codes_path = filter_config['CODES_PATH']
+        method = filter_config['method']
+        filter_path = filter_config['FILTER_PATH']
+        output_path = filter_config['OUTPUT_PATH']
+        filteration = filter_config.get('filteration', None)
+        
+        print(f"  ✓ Experiment: {experiment_name}")
+        print(f"  ✓ HESIN data: {hesin_data_path}")
+        print(f"  ✓ Codes: {codes_path}")
+        print(f"  ✓ Method: {method}")
+        print(f"  ✓ Filter path: {filter_path}")
+        print(f"  ✓ Output: {output_path}")
+        print(f"  ✓ Filteration: {'None' if filteration is None else 'Configured'}")
+    
+    else:
+        # Use command-line arguments
+        if not all([args.experiment_name, args.hesin_data, args.codes, args.method, args.filter_path, args.output]):
+            parser.error("When not using --config, all of the following are required: "
+                        "--experiment-name, --hesin-data, --codes, --method, --filter-path, --output")
+        
+        experiment_name = args.experiment_name
+        hesin_data_path = args.hesin_data
+        codes_path = args.codes
+        method = args.method
+        filter_path = args.filter_path
+        output_path = args.output
+        
+        # Handle filteration
+        if args.no_filteration:
+            filteration = None
+        else:
+            # For command-line usage, filteration is None by default
+            # User can extend this to accept filteration as JSON/YAML if needed
+            print("  ⚠ Note: No filteration specified. Use --no-filteration to explicitly skip filtering.")
+            print("  ⚠ To use filteration, either use a config file or modify the script to accept filteration.")
+            filteration = None
+    
+    # Run the filter step
+    try:
+        filter_step(experiment_name, hesin_data_path, codes_path, method, filter_path, output_path, filteration)
+    except Exception as e:
+        print(f"\n❌ Error running filter_step: {e}", file=sys.stderr)
+        sys.exit(1)
