@@ -1,16 +1,16 @@
 # Global experiment configuration
-experiment_name: kobi_track
+experiment_name: grant_poc_kobi_new_list
 
 filter_step:
   HESIN_DATA_PATH: data/data_hesin/data_hesin.csv
-  CODES_PATH: data/pipelines/z_score_pipeline/codes_files/kobi_track.yaml
+  CODES_PATH: data/pipelines/z_score_pipeline/codes_files/all_diseases.yaml
   method: keep # can also be "drop"
   FILTER_PATH: data/information_data/eid_age_sex.csv
   OUTPUT_PATH: data/pipelines/z_score_pipeline/
   filteration:
     Age at recruitment:
-      young: { min: 40, max: 55 }
-      old: { min: 56, max: 69 }
+      young: { min: 40, max: 45 }
+      old: { min: 65, max: 70 }
 
 bootstrap_step:
   OUTPUT_BASE_DIR: data/pipelines/z_score_pipeline/

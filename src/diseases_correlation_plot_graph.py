@@ -10,7 +10,7 @@ os.chdir(SRC_DIR)
 print(f"Working directory set to: {os.getcwd()}")
 
 # === CONFIGURATION ===
-CONNECTION_MATRIX_PATH = 'data/pipelines/z_score_pipeline/kobi_track/ci_analysis/old_upper_ci_analysis_minus_young_upper_ci_analysis.csv'
+CONNECTION_MATRIX_PATH = 'data/pipelines/z_score_pipeline/grant_poc_young_old/ci_analysis/young_upper_ci_analysis_selected.csv'
 CODES_PATH = 'data/disease_graph/input/codes.tsv'
 OUTPUT_HTML_PATH = "data/disease_graph/output/disease_connection_heatmap_kobi_track_old_minus_young.html"
 

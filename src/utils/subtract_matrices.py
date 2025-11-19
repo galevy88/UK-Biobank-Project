@@ -9,8 +9,8 @@ os.chdir(SRC_DIR)
 print(f"Working directory set to: {os.getcwd()}")
 
 # === CONFIGURATION ===
-MATRIX_1_PATH = 'data/pipelines/z_score_pipeline/kobi_track/ci_analysis/old_upper_ci_analysis.csv'
-MATRIX_2_PATH = 'data/pipelines/z_score_pipeline/kobi_track/ci_analysis/young_upper_ci_analysis.csv'
+MATRIX_1_PATH = 'data/pipelines/z_score_pipeline/grant_poc_young_old/ci_analysis/old_upper_ci_analysis.csv'
+MATRIX_2_PATH = 'data/pipelines/z_score_pipeline/grant_poc_young_old/ci_analysis/young_upper_ci_analysis.csv'
 
 # Generate dynamic output filename based on input filenames
 def generate_output_path(matrix1_path, matrix2_path):
