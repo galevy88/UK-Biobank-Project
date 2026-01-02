@@ -1,0 +1,6 @@
+ischemic_stroke:
+  - I63
+hemorrhagic_stroke:
+  - I60
+  - I61
+  - I64

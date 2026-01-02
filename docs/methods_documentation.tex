@@ -1,0 +1,561 @@
+\documentclass[11pt,a4paper]{article}
+
+% Packages
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{amsmath,amssymb,amsthm}
+\usepackage{geometry}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{hyperref}
+\usepackage{xcolor}
+\usepackage{enumitem}
+\usepackage{fancyhdr}
+\usepackage{titlesec}
+
+% Page setup
+\geometry{margin=1in}
+\pagestyle{fancy}
+\fancyhf{}
+\rhead{Feature Engineering \& Loss Functions}
+\lhead{UK Biobank Stroke Classification}
+\cfoot{\thepage}
+
+% Title formatting
+\titleformat{\section}{\Large\bfseries\color{blue!70!black}}{\thesection}{1em}{}
+\titleformat{\subsection}{\large\bfseries\color{blue!50!black}}{\thesubsection}{1em}{}
+
+% Custom commands
+\newcommand{\feature}[1]{\textbf{\textcolor{purple}{#1}}}
+\newcommand{\loss}[1]{\textbf{\textcolor{red!70!black}{#1}}}
+
+\title{\textbf{Feature Engineering Methods and Loss Functions\\for Stroke Classification}}
+\author{UK Biobank Latent Representation Analysis}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+This document describes the feature engineering methods (data augmentations) and loss functions used in the discriminative encoder model for classifying healthy individuals versus stroke patients. Each method is explained with its purpose (why it is needed) and mathematical formulation (how it is calculated).
+\end{abstract}
+
+\tableofcontents
+\newpage
+
+%==============================================================================
+\section{Introduction}
+%==============================================================================
+
+The goal of this project is to distinguish between healthy individuals and stroke patients using blood biomarker data. We employ two main strategies:
+
+\begin{enumerate}
+    \item \textbf{Feature Engineering}: Creating new discriminative features from pairs of biomarkers that show different correlation patterns between healthy and sick populations.
+    \item \textbf{Loss Functions}: Training a neural network encoder with multiple objectives that encourage class separation in the latent space.
+\end{enumerate}
+
+\subsection{Notation}
+
+Throughout this document, we use the following notation:
+\begin{itemize}
+    \item $x_1, x_2$: Values of two biomarker features for a sample
+    \item $\mu_1^H, \mu_2^H$: Mean values in the healthy population
+    \item $\sigma_1^H, \sigma_2^H$: Standard deviations in the healthy population
+    \item $z_1, z_2$: Z-scores relative to healthy population
+    \item $\mathbf{z}$: Latent representation vector from the encoder
+    \item $y$: Class label (0 = Healthy, 1 = Stroke)
+\end{itemize}
+
+\newpage
+%==============================================================================
+\section{Feature Engineering Methods (Data Augmentation)}
+%==============================================================================
+
+We create new features from pairs of biomarkers that show significant correlation differences between healthy and sick populations. For each pair $(x_1, x_2)$, we compute 10 different discriminative features.
+
+%------------------------------------------------------------------------------
+\subsection{RESID: Regression Residual}
+%------------------------------------------------------------------------------
+
+\subsubsection{Why is it needed?}
+In healthy individuals, two related biomarkers often follow a predictable linear relationship. When this relationship is disrupted in sick patients, the deviation from the expected value becomes a strong disease indicator. The residual captures \textit{how much a sample deviates from the normal pattern}.
+
+\subsubsection{How is it calculated?}
+
+\begin{enumerate}
+    \item Fit a linear regression model using \textbf{only healthy samples}:
+    \begin{equation}
+        x_1 = \beta_0 + \beta_1 \cdot x_2 + \epsilon
+    \end{equation}
+    
+    \item For any sample (healthy or sick), compute the residual:
+    \begin{equation}
+        \boxed{\text{RESID} = x_1 - (\hat{\beta}_0 + \hat{\beta}_1 \cdot x_2)}
+    \end{equation}
+\end{enumerate}
+
+\textbf{Interpretation}: Large positive or negative residuals indicate that the sample's biomarker relationship deviates from the healthy population's pattern.
+
+%------------------------------------------------------------------------------
+\subsection{ZDIFF: Z-Score Difference}
+%------------------------------------------------------------------------------
+
+\subsubsection{Why is it needed?}
+This feature captures \textit{directional imbalance} between two biomarkers. If one biomarker is abnormally high while another is abnormally low (relative to healthy norms), this asymmetry may indicate disease.
+
+\subsubsection{How is it calculated?}
+
+First, compute Z-scores relative to the healthy population:
+\begin{equation}
+    z_1 = \frac{x_1 - \mu_1^H}{\sigma_1^H}, \quad z_2 = \frac{x_2 - \mu_2^H}{\sigma_2^H}
+\end{equation}
+
+Then compute the difference:
+\begin{equation}
+    \boxed{\text{ZDIFF} = z_1 - z_2}
+\end{equation}
+
+\textbf{Interpretation}: A large positive ZDIFF means feature 1 is relatively more elevated than feature 2 (compared to healthy norms). A large negative ZDIFF indicates the opposite.
+
+%------------------------------------------------------------------------------
+\subsection{ZPROD: Z-Score Product}
+%------------------------------------------------------------------------------
+
+\subsubsection{Why is it needed?}
+This feature has high signal when \textit{both} biomarkers are abnormal in the same direction. If both are elevated or both are depressed, the product is large and positive. This captures coordinated abnormalities that may indicate systemic disease.
+
+\subsubsection{How is it calculated?}
+\begin{equation}
+    \boxed{\text{ZPROD} = z_1 \times z_2}
+\end{equation}
+
+\textbf{Interpretation}:
+\begin{itemize}
+    \item $\text{ZPROD} \gg 0$: Both features abnormal in the same direction (both high or both low)
+    \item $\text{ZPROD} \ll 0$: Features abnormal in opposite directions
+    \item $\text{ZPROD} \approx 0$: At least one feature is near normal
+\end{itemize}
+
+\newpage
+%------------------------------------------------------------------------------
+\subsection{MAHAL: Mahalanobis Distance}
+%------------------------------------------------------------------------------
+
+\subsubsection{Why is it needed?}
+Unlike simple Euclidean distance, Mahalanobis distance accounts for the \textit{correlation structure} of the healthy population. It measures how many ``standard deviations'' a point is from the healthy centroid, considering the shape of the healthy distribution.
+
+\subsubsection{How is it calculated?}
+
+\begin{enumerate}
+    \item Compute the covariance matrix $\mathbf{\Sigma}^H$ from healthy samples
+    \item Compute the healthy centroid $\boldsymbol{\mu}^H = (\mu_1^H, \mu_2^H)^T$
+    \item For each sample $\mathbf{x} = (x_1, x_2)^T$:
+\end{enumerate}
+
+\begin{equation}
+    \boxed{\text{MAHAL} = \sqrt{(\mathbf{x} - \boldsymbol{\mu}^H)^T (\mathbf{\Sigma}^H)^{-1} (\mathbf{x} - \boldsymbol{\mu}^H)}}
+\end{equation}
+
+\textbf{Interpretation}: Higher Mahalanobis distance indicates the sample is further from the healthy population's center, accounting for the natural spread and correlation of healthy values.
+
+%------------------------------------------------------------------------------
+\subsection{CDEV: Covariance Deviation}
+%------------------------------------------------------------------------------
+
+\subsubsection{Why is it needed?}
+This feature detects when the \textit{joint behavior} of two biomarkers breaks from the healthy correlation pattern. Even if individual values seem normal, their relationship may be abnormal.
+
+\subsubsection{How is it calculated?}
+
+\begin{enumerate}
+    \item Compute expected covariance from healthy population:
+    \begin{equation}
+        \text{Cov}_{\text{expected}} = \mathbb{E}[(x_1^H - \mu_1^H)(x_2^H - \mu_2^H)]
+    \end{equation}
+    
+    \item Compute observed covariance contribution for the sample:
+    \begin{equation}
+        \text{Cov}_{\text{observed}} = (x_1 - \mu_1^H)(x_2 - \mu_2^H)
+    \end{equation}
+    
+    \item Normalize by the standard deviation of covariance contributions in healthy population:
+\end{enumerate}
+
+\begin{equation}
+    \boxed{\text{CDEV} = \frac{\text{Cov}_{\text{observed}} - \text{Cov}_{\text{expected}}}{\sigma_{\text{cov}}^H}}
+\end{equation}
+
+\textbf{Interpretation}: Large CDEV values indicate the sample's biomarker pair behaves differently than expected from healthy individuals.
+
+%------------------------------------------------------------------------------
+\subsection{QEXTR: Quantile Extremity}
+%------------------------------------------------------------------------------
+
+\subsubsection{Why is it needed?}
+This is a \textit{robust} measure of abnormality that uses medians and interquartile ranges instead of means and standard deviations. It is less sensitive to outliers in the healthy population.
+
+\subsubsection{How is it calculated?}
+
+\begin{enumerate}
+    \item Compute robust statistics from healthy population:
+    \begin{equation}
+        \text{Med}_1^H, \text{Med}_2^H \quad \text{(medians)}, \quad \text{IQR}_1^H, \text{IQR}_2^H \quad \text{(interquartile ranges)}
+    \end{equation}
+    
+    \item Compute extremity for each feature:
+    \begin{equation}
+        q_1 = \frac{|x_1 - \text{Med}_1^H|}{\text{IQR}_1^H}, \quad q_2 = \frac{|x_2 - \text{Med}_2^H|}{\text{IQR}_2^H}
+    \end{equation}
+    
+    \item Take the maximum:
+\end{enumerate}
+
+\begin{equation}
+    \boxed{\text{QEXTR} = \max(q_1, q_2)}
+\end{equation}
+
+\textbf{Interpretation}: Higher values indicate at least one of the biomarkers is extremely far from the healthy median.
+
+\newpage
+%------------------------------------------------------------------------------
+\subsection{FISHER: Fisher Discriminant Projection}
+%------------------------------------------------------------------------------
+
+\subsubsection{Why is it needed?}
+Fisher's Linear Discriminant finds the \textit{optimal direction} that maximizes separation between healthy and sick populations. Projecting onto this direction gives a single value that is maximally discriminative.
+
+\subsubsection{How is it calculated?}
+
+\begin{enumerate}
+    \item Compute class means:
+    \begin{equation}
+        \boldsymbol{\mu}^H = \text{mean of healthy samples}, \quad \boldsymbol{\mu}^S = \text{mean of sick samples}
+    \end{equation}
+    
+    \item Compute pooled within-class covariance $\mathbf{S}_W$
+    
+    \item Find Fisher direction:
+    \begin{equation}
+        \mathbf{w} = \mathbf{S}_W^{-1} (\boldsymbol{\mu}^S - \boldsymbol{\mu}^H)
+    \end{equation}
+    
+    \item Normalize and project:
+\end{enumerate}
+
+\begin{equation}
+    \boxed{\text{FISHER} = \frac{\mathbf{w}^T \mathbf{x}}{||\mathbf{w}||} = w_1 \cdot x_1 + w_2 \cdot x_2}
+\end{equation}
+
+\textbf{Interpretation}: This projection value directly indicates where the sample falls on the axis of maximum class separation.
+
+%------------------------------------------------------------------------------
+\subsection{DEVPROD: Deviation Product}
+%------------------------------------------------------------------------------
+
+\subsubsection{Why is it needed?}
+This feature is high when \textit{both} biomarkers are abnormal (regardless of direction). Unlike ZPROD, it uses absolute values, so it captures any joint abnormality.
+
+\subsubsection{How is it calculated?}
+\begin{equation}
+    \boxed{\text{DEVPROD} = |z_1| \times |z_2|}
+\end{equation}
+
+\textbf{Interpretation}: 
+\begin{itemize}
+    \item High DEVPROD: Both features are significantly abnormal
+    \item Low DEVPROD: At least one feature is near normal
+\end{itemize}
+
+%------------------------------------------------------------------------------
+\subsection{ASYM: Asymmetry Score}
+%------------------------------------------------------------------------------
+
+\subsubsection{Why is it needed?}
+This feature captures which of the two biomarkers is \textit{more abnormal}. In some diseases, one biomarker may be severely affected while another remains relatively normal.
+
+\subsubsection{How is it calculated?}
+\begin{equation}
+    \boxed{\text{ASYM} = |z_1| - |z_2|}
+\end{equation}
+
+\textbf{Interpretation}:
+\begin{itemize}
+    \item $\text{ASYM} > 0$: Feature 1 is more abnormal than feature 2
+    \item $\text{ASYM} < 0$: Feature 2 is more abnormal than feature 1
+    \item $\text{ASYM} \approx 0$: Both features are equally (ab)normal
+\end{itemize}
+
+%------------------------------------------------------------------------------
+\subsection{DENS: Density Anomaly Score}
+%------------------------------------------------------------------------------
+
+\subsubsection{Why is it needed?}
+This feature measures how far a sample is from the \textit{typical healthy region} in the 2D biomarker space. Samples in low-density regions of the healthy distribution are more likely to be abnormal.
+
+\subsubsection{How is it calculated?}
+
+\begin{enumerate}
+    \item Compute Euclidean distance from healthy origin in Z-score space:
+    \begin{equation}
+        d = \sqrt{z_1^2 + z_2^2}
+    \end{equation}
+    
+    \item Compute typical distance for healthy samples:
+    \begin{equation}
+        d_{\text{typical}}^H = \text{median}\left(\sqrt{(z_1^H)^2 + (z_2^H)^2}\right)
+    \end{equation}
+    
+    \item Normalize:
+\end{enumerate}
+
+\begin{equation}
+    \boxed{\text{DENS} = \frac{d}{d_{\text{typical}}^H} = \frac{\sqrt{z_1^2 + z_2^2}}{d_{\text{typical}}^H}}
+\end{equation}
+
+\textbf{Interpretation}: DENS $> 1$ means the sample is further from the healthy center than typical healthy samples.
+
+\newpage
+%==============================================================================
+\section{Loss Functions for the Discriminative Encoder}
+%==============================================================================
+
+The discriminative encoder is trained with multiple loss functions to encourage class separation in the latent space $\mathbf{z}$.
+
+%------------------------------------------------------------------------------
+\subsection{Classification Loss (Cross-Entropy)}
+%------------------------------------------------------------------------------
+
+\subsubsection{Why is it needed?}
+This is the primary supervised signal that directly optimizes for correct class prediction. It provides gradient information about which samples are misclassified.
+
+\subsubsection{How is it calculated?}
+
+Given logits $\mathbf{o} = (o_0, o_1)$ from the classifier head and true label $y$:
+
+\begin{equation}
+    \boxed{\mathcal{L}_{\text{class}} = -\log\left(\frac{e^{o_y}}{\sum_{c=0}^{1} e^{o_c}}\right) = -o_y + \log\left(\sum_{c=0}^{1} e^{o_c}\right)}
+\end{equation}
+
+\textbf{Effect}: Minimizing this loss increases the probability assigned to the correct class.
+
+%------------------------------------------------------------------------------
+\subsection{Supervised Contrastive Loss}
+%------------------------------------------------------------------------------
+
+\subsubsection{Why is it needed?}
+This loss explicitly \textit{pulls together} samples from the same class and \textit{pushes apart} samples from different classes in the latent space. It creates a more structured representation than classification loss alone.
+
+\subsubsection{How is it calculated?}
+
+\begin{enumerate}
+    \item Normalize latent vectors: $\tilde{\mathbf{z}}_i = \mathbf{z}_i / ||\mathbf{z}_i||$
+    
+    \item Compute similarity matrix: $s_{ij} = \tilde{\mathbf{z}}_i^T \tilde{\mathbf{z}}_j / \tau$ (temperature $\tau = 0.5$)
+    
+    \item For each sample $i$, compute loss over positive pairs (same class):
+\end{enumerate}
+
+\begin{equation}
+    \boxed{\mathcal{L}_{\text{SupCon}} = -\frac{1}{|P(i)|} \sum_{j \in P(i)} \log \frac{\exp(s_{ij})}{\sum_{k \neq i} \exp(s_{ik})}}
+\end{equation}
+
+where $P(i) = \{j : y_j = y_i, j \neq i\}$ is the set of positive pairs for sample $i$.
+
+\textbf{Effect}: Same-class samples cluster together; different-class samples separate.
+
+%------------------------------------------------------------------------------
+\subsection{Margin Centroid Loss}
+%------------------------------------------------------------------------------
+
+\subsubsection{Why is it needed?}
+This loss ensures that the \textit{class centroids} are far apart. Even if individual samples are well-classified, we want the cluster centers to be separated by at least a margin.
+
+\subsubsection{How is it calculated?}
+
+\begin{enumerate}
+    \item Compute class centroids in latent space:
+    \begin{equation}
+        \mathbf{c}_H = \frac{1}{|H|}\sum_{i \in H} \mathbf{z}_i, \quad \mathbf{c}_S = \frac{1}{|S|}\sum_{i \in S} \mathbf{z}_i
+    \end{equation}
+    
+    \item Compute distance between centroids:
+    \begin{equation}
+        d = ||\mathbf{c}_H - \mathbf{c}_S||_2
+    \end{equation}
+    
+    \item Apply margin-based hinge loss (margin $m = 10$):
+\end{enumerate}
+
+\begin{equation}
+    \boxed{\mathcal{L}_{\text{centroid}} = \max(0, m - d) = \text{ReLU}(m - d)}
+\end{equation}
+
+\textbf{Effect}: No penalty if centroids are more than $m$ apart; otherwise, pushes them apart.
+
+\newpage
+%------------------------------------------------------------------------------
+\subsection{Inter-Class Repulsion Loss}
+%------------------------------------------------------------------------------
+
+\subsubsection{Why is it needed?}
+While the centroid loss operates on means, this loss operates on \textit{individual sample pairs} between classes. It directly penalizes any healthy-stroke sample pair that is too close.
+
+\subsubsection{How is it calculated?}
+
+\begin{enumerate}
+    \item Sample subsets from each class: $Z_0 \subseteq \{\mathbf{z}_i : y_i = 0\}$, $Z_1 \subseteq \{\mathbf{z}_i : y_i = 1\}$
+    
+    \item Compute all pairwise distances:
+    \begin{equation}
+        d_{ij} = ||\mathbf{z}_i - \mathbf{z}_j||_2 \quad \text{for } \mathbf{z}_i \in Z_0, \mathbf{z}_j \in Z_1
+    \end{equation}
+    
+    \item Penalize distances below margin $m$:
+\end{enumerate}
+
+\begin{equation}
+    \boxed{\mathcal{L}_{\text{repulsion}} = \frac{1}{|Z_0| \cdot |Z_1|} \sum_{i,j} \max(0, m - d_{ij})}
+\end{equation}
+
+\textbf{Effect}: Directly pushes individual samples from different classes apart.
+
+%------------------------------------------------------------------------------
+\subsection{Compactness Loss}
+%------------------------------------------------------------------------------
+
+\subsubsection{Why is it needed?}
+While separation losses push classes apart, compactness loss keeps each class \textit{tight around its centroid}. This prevents the latent space from becoming too spread out.
+
+\subsubsection{How is it calculated?}
+
+For each class $c \in \{0, 1\}$:
+\begin{enumerate}
+    \item Compute centroid: $\mathbf{c}_c = \text{mean}(\{\mathbf{z}_i : y_i = c\})$
+    
+    \item Compute distances from centroid:
+    \begin{equation}
+        d_i = ||\mathbf{z}_i - \mathbf{c}_c||_2 \quad \text{for } y_i = c
+    \end{equation}
+    
+    \item Penalize distances beyond target radius $r$:
+\end{enumerate}
+
+\begin{equation}
+    \boxed{\mathcal{L}_{\text{compact}} = \sum_{c=0}^{1} \frac{1}{|C_c|} \sum_{i \in C_c} \max(0, d_i - r)}
+\end{equation}
+
+\textbf{Effect}: Samples are encouraged to stay within radius $r$ of their class centroid.
+
+%------------------------------------------------------------------------------
+\subsection{Variance Regularization}
+%------------------------------------------------------------------------------
+
+\subsubsection{Why is it needed?}
+This loss prevents \textit{dimension collapse}, where all information gets encoded in only one or two dimensions of the latent space. We want all dimensions to be used meaningfully.
+
+\subsubsection{How is it calculated?}
+
+\begin{enumerate}
+    \item Compute variance of each latent dimension across the batch:
+    \begin{equation}
+        \text{Var}_j = \frac{1}{N}\sum_{i=1}^{N}(z_{ij} - \bar{z}_j)^2
+    \end{equation}
+    
+    \item Penalize dimensions with variance below minimum $v_{\min}$:
+\end{enumerate}
+
+\begin{equation}
+    \boxed{\mathcal{L}_{\text{variance}} = \sum_{j=1}^{d} \max(0, v_{\min} - \text{Var}_j)}
+\end{equation}
+
+\textbf{Effect}: Encourages all latent dimensions to have at least $v_{\min}$ variance.
+
+\newpage
+%==============================================================================
+\section{Total Loss Function}
+%==============================================================================
+
+The total loss is a weighted combination of all individual losses:
+
+\begin{equation}
+    \boxed{\mathcal{L}_{\text{total}} = \lambda_1 \mathcal{L}_{\text{class}} + \lambda_2 \mathcal{L}_{\text{SupCon}} + \lambda_3 \mathcal{L}_{\text{centroid}} + \lambda_4 \mathcal{L}_{\text{repulsion}} + \lambda_5 \mathcal{L}_{\text{compact}} + \lambda_6 \mathcal{L}_{\text{variance}}}
+\end{equation}
+
+\subsection{Current Weight Configuration}
+
+\begin{table}[h]
+\centering
+\begin{tabular}{llcc}
+\toprule
+\textbf{Loss} & \textbf{Purpose} & \textbf{Weight} & \textbf{Key Parameter} \\
+\midrule
+Classification & Direct supervision & $\lambda_1 = 2.0$ & -- \\
+SupCon & Same-class attraction & $\lambda_2 = 0.3$ & $\tau = 0.5$ \\
+Centroid & Cluster separation & $\lambda_3 = 5.0$ & $m = 10.0$ \\
+Repulsion & Sample-level separation & $\lambda_4 = 2.0$ & $m = 5.0$ \\
+Compactness & Tight clusters & $\lambda_5 = 0.2$ & $r = 1.5$ \\
+Variance & Prevent collapse & $\lambda_6 = 1.0$ & $v_{\min} = 0.3$ \\
+\bottomrule
+\end{tabular}
+\caption{Loss function weights and key parameters}
+\end{table}
+
+\subsection{Design Rationale}
+
+\begin{itemize}
+    \item \textbf{Centroid loss is dominant} ($\lambda_3 = 5.0$): The primary goal is class separation
+    \item \textbf{SupCon is reduced} ($\lambda_2 = 0.3$): High SupCon weight can create curved manifolds
+    \item \textbf{Compactness is light} ($\lambda_5 = 0.2$): Too much compactness fights separation
+    \item \textbf{Variance ensures all dimensions are used}: Prevents the model from collapsing information into fewer dimensions
+\end{itemize}
+
+%==============================================================================
+\section{Summary}
+%==============================================================================
+
+\subsection{Feature Engineering Summary}
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabular}{lll}
+\toprule
+\textbf{Method} & \textbf{Captures} & \textbf{Formula} \\
+\midrule
+RESID & Regression deviation & $x_1 - \hat{x}_1$ \\
+ZDIFF & Directional imbalance & $z_1 - z_2$ \\
+ZPROD & Coordinated abnormality & $z_1 \times z_2$ \\
+MAHAL & Multivariate distance & $\sqrt{(\mathbf{x}-\boldsymbol{\mu})^T\Sigma^{-1}(\mathbf{x}-\boldsymbol{\mu})}$ \\
+CDEV & Correlation break & $\frac{(x_1-\mu_1)(x_2-\mu_2) - \text{Cov}}{\sigma}$ \\
+QEXTR & Robust extremity & $\max(|x_1-\text{Med}|/\text{IQR}, |x_2-\text{Med}|/\text{IQR})$ \\
+FISHER & Optimal projection & $\mathbf{w}^T\mathbf{x}$ (Fisher direction) \\
+DEVPROD & Joint abnormality & $|z_1| \times |z_2|$ \\
+ASYM & Differential abnormality & $|z_1| - |z_2|$ \\
+DENS & Density anomaly & $\sqrt{z_1^2 + z_2^2} / d_{\text{typical}}$ \\
+\bottomrule
+\end{tabular}
+\caption{Summary of feature engineering methods}
+\end{table}
+
+\subsection{Loss Function Summary}
+
+\begin{table}[h]
+\centering
+\begin{tabular}{lll}
+\toprule
+\textbf{Loss} & \textbf{Effect} & \textbf{Type} \\
+\midrule
+Classification & Correct predictions & Supervised \\
+SupCon & Cluster structure & Contrastive \\
+Centroid & Separate cluster centers & Separation \\
+Repulsion & Separate individual samples & Separation \\
+Compactness & Tight clusters & Regularization \\
+Variance & Use all dimensions & Regularization \\
+\bottomrule
+\end{tabular}
+\caption{Summary of loss functions}
+\end{table}
+
+\end{document}
+

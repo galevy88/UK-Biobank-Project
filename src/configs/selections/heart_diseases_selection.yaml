@@ -1,0 +1,21 @@
+HESIN_DATA_PATH: data/data_hesin/data_hesin.csv
+PARTICIPANT_DATA_PATH: data/joints/heart_data/output/joined_data.csv
+OUTPUT_PATH: data/joints/heart_data/output
+DISEASES_MAPPING_PATH: configs/mappings/diseases_mapping_heart.yaml
+
+save_data: true
+remove_prefix:
+participant_id_column: Participant ID
+
+disease_selection:
+  ischemic_stroke: true
+  hemorrhagic_stroke: true
+  angina_pectoris: true
+  chronic_ischemic_heart_disease: true
+  acute_pericarditis: true
+  aortic_valve_disorder:
+  pulmunary_valve_disorder: true
+  acute_myocarditis:
+  aortic_valve_disorder: true
+  atherosclerosis:
+  healthy: true

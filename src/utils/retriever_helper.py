@@ -15,10 +15,10 @@ def load_csv(file_path, required_columns=None):
         raise FileNotFoundError(f"Error: {file_path} not found. Please check the file path.")
 
 
-def get_disease_eids_by_type(hesin_data, disease_name):
+def get_disease_eids_by_type(hesin_data, disease_name, mapping_path):
     """Return set of participant IDs with specified disease based on ICD10 codes from YAML file."""
     # Load ICD10 codes from YAML file
-    with open('configs/diseases_mapping.yaml', 'r') as file:
+    with open(mapping_path, 'r') as file:
         disease_codes = yaml.safe_load(file)
 
     # Get the list of ICD10 codes for the specified disease
@@ -42,7 +42,7 @@ def get_healthy_eids(all_eids, disease_eids):
     return all_eids - disease_eids
 
 
-def save_output(final_df, config, output_dir, base_name):
+def save_output(final_df, config, output_dir):
     """
     Save the final DataFrame and config YAML to the specified directory.
 
@@ -50,12 +50,11 @@ def save_output(final_df, config, output_dir, base_name):
         final_df (pd.DataFrame): The combined participant data.
         config (dict): The loaded configuration dictionary.
         output_dir (str): Directory to save files (will be created if not exists).
-        base_name (str): Base name for output files (without extension).
     """
     os.makedirs(output_dir, exist_ok=True)
 
-    csv_output = os.path.join(output_dir, f"{base_name}.csv")
-    yaml_output = os.path.join(output_dir, f"{base_name}.yaml")
+    csv_output = os.path.join(output_dir, "final_data.csv")
+    yaml_output = os.path.join(output_dir, "run_config.yaml")
 
     # Save CSV
     final_df.to_csv(csv_output, index=False)

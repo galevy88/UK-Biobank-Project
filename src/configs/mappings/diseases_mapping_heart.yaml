@@ -1,0 +1,16 @@
+angina_pectoris:
+  - I20
+chronic_ischemic_heart_disease:
+  - I25
+acute_pericarditis:
+  - I30
+aortic_valve_disorder:
+  - I35
+pulmunary_valve_disorder:
+  - I37
+acute_myocarditis:
+  - I40
+aortic_valve_disorder:
+  - I35
+atherosclerosis:
+  - I70

@@ -1,6 +1,7 @@
 HESIN_DATA_PATH: data/data_hesin/data_hesin.csv
 PARTICIPANT_DATA_PATH: data/proteomics/input/proteomics.csv
 OUTPUT_PATH: data/proteomics/output/proteomics_heart_healthy
+DISEASES_MAPPING_PATH: configs/mappings/diseases_mapping_original.yaml
 
 save_data: true
 remove_prefix: olink_instance_0.
